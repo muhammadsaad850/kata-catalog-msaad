@@ -1,0 +1,89 @@
+
+struct Character {
+    health: i32,
+    level: u32,
+    is_alive: bool,
+}
+
+impl Character {
+    // Constructor 
+    fn new() -> Character {
+        Character {
+            health: 1000,
+            level: 1,
+            is_alive: true,
+        }
+    }
+
+    // Method to deal damage
+    fn deal_damage(&mut self, target: &mut Character, damage: i32) {
+        if self as *const _ == target as *const _ {
+            println!("Character cannot deal damage to itself.");
+            return;
+        }
+
+        if !target.is_alive {
+            println!("Cannot deal damage to a dead character.");
+            return;
+        }
+
+        let actual_damage = self.adjust_damage(target, damage);
+        target.receive_damage(actual_damage);
+    }
+
+    // Method to receive damage
+    fn receive_damage(&mut self, damage: i32) {
+        if damage >= self.health {
+            self.health = 0;
+            self.is_alive = false;
+            println!("The character has died.");
+        } else {
+            self.health -= damage;
+            println!("The character received {} damage, health is now {}", damage, self.health);
+        }
+    }
+
+    // Heal method - simplified to only heal self
+    fn heal_self(&mut self, amount: i32) {
+        if !self.is_alive {
+            println!("Cannot heal a dead character.");
+            return;
+        }
+
+        self.health = (self.health + amount).min(1000);
+        println!("Character healed, health is now {}", self.health);
+    }
+
+    // Adjust damage based on level difference
+    fn adjust_damage(&self, target: &Character, damage: i32) -> i32 {
+        if target.level >= self.level + 5 {
+            (damage as f32 * 0.5).round() as i32
+        } else if target.level + 5 <= self.level {
+            (damage as f32 * 1.5).round() as i32
+        } else {
+            damage
+        }
+    }
+}
+
+fn main() {
+    let mut character1 = Character::new();
+    let mut character2 = Character::new();
+    
+    // Change level 
+    character2.level = 6;
+
+    // Dealing damage
+    println!("Character 1 deals 200 damage to Character 2.");
+    character1.deal_damage(&mut character2, 200);
+    
+    // Self sabotage
+    //println!("Character 1 deals 200 damage to Character 2.");
+    //character1.deal_damage(&mut character1, 200);
+
+
+
+    // Healing self #self-love
+    println!("Character 1 heals itself.");
+    character1.heal_self(50);
+}
