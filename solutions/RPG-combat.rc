@@ -1,22 +1,23 @@
-
 struct Character {
     health: i32,
     level: u32,
     is_alive: bool,
+    attack_range: f32,  // New field for attack range
 }
 
 impl Character {
-    // Constructor 
-    fn new() -> Character {
+    // Constructor with attack range
+    fn new(attack_range: f32) -> Character {
         Character {
             health: 1000,
             level: 1,
             is_alive: true,
+            attack_range,
         }
     }
 
-    // Method to deal damage
-    fn deal_damage(&mut self, target: &mut Character, damage: i32) {
+    // Method to deal damage, now includes range check
+    fn deal_damage(&mut self, target: &mut Character, damage: i32, distance: f32) {
         if self as *const _ == target as *const _ {
             println!("Character cannot deal damage to itself.");
             return;
@@ -24,6 +25,12 @@ impl Character {
 
         if !target.is_alive {
             println!("Cannot deal damage to a dead character.");
+            return;
+        }
+
+        // Check if the target is within range
+        if distance > self.attack_range {
+            println!("Target is out of range.");
             return;
         }
 
@@ -67,23 +74,25 @@ impl Character {
 }
 
 fn main() {
-    let mut character1 = Character::new();
-    let mut character2 = Character::new();
-    
-    // Change level 
-    character2.level = 6;
+    let mut melee_character = Character::new(2.0);  // Melee fighter with range 2 meters
+    let mut ranged_character = Character::new(20.0);  // Ranged fighter with range 20 meters
 
-    // Dealing damage
-    println!("Character 1 deals 200 damage to Character 2.");
-    character1.deal_damage(&mut character2, 200);
-    
-    // Self sabotage
-    //println!("Character 1 deals 200 damage to Character 2.");
-    //character1.deal_damage(&mut character1, 200);
+    // Change level for testing
+    ranged_character.level = 6;
 
+    // Dealing damage within range
+    println!("Melee character tries to deal 200 damage to ranged character within 1 meter.");
+    melee_character.deal_damage(&mut ranged_character, 200, 1.0);  // In range
 
+    // Dealing damage out of range
+    println!("Melee character tries to deal 200 damage to ranged character from 5 meters.");
+    melee_character.deal_damage(&mut ranged_character, 200, 5.0);  // Out of range
 
-    // Healing self #self-love
-    println!("Character 1 heals itself.");
-    character1.heal_self(50);
+    // Ranged character attacks within range
+    println!("Ranged character tries to deal 300 damage to melee character within 15 meters.");
+    ranged_character.deal_damage(&mut melee_character, 300, 15.0);  // In range
+
+    // Healing self
+    println!("Ranged character heals itself.");
+    ranged_character.heal_self(50);
 }
