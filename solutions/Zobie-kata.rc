@@ -1,0 +1,125 @@
+use std::collections::{HashSet, HashMap};
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+enum Level {
+    Blue,
+    Yellow,
+    Orange,
+    Red,
+}
+
+impl Level {
+    fn from_experience(exp: u32) -> Self {
+        match exp {
+            0..=6 => Level::Blue,
+            7..=18 => Level::Yellow,
+            19..=42 => Level::Orange,
+            _ => Level::Red,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Survivor {
+    name: String,
+    wounds: u8,
+    actions: u8,
+    experience: u32,
+    equipment: Vec<String>,
+}
+
+impl Survivor {
+    fn new(name: &str) -> Self {
+        Survivor {
+            name: name.to_string(),
+            wounds: 0,
+            actions: 3,
+            experience: 0,
+            equipment: Vec::new(),
+        }
+    }
+
+    fn receive_wound(&mut self) {
+        if self.wounds < 2 {
+            self.wounds += 1;
+        }
+        
+        if self.wounds >= 2 {
+            self.equipment.clear(); // Survivor dies, drop all equipment
+        } else {
+            let max_capacity = 5 - self.wounds as usize;
+            while self.equipment.len() > max_capacity {
+                self.equipment.pop(); // Discard excess equipment
+            }
+        }
+    }
+
+    fn add_experience(&mut self) {
+        self.experience += 1;
+    }
+
+    fn level(&self) -> Level {
+        Level::from_experience(self.experience)
+    }
+
+    fn add_equipment(&mut self, item: &str) {
+        if self.equipment.len() < (5 - self.wounds as usize) {
+            self.equipment.push(item.to_string());
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Game {
+    survivors: HashMap<String, Survivor>,
+}
+
+impl Game {
+    fn new() -> Self {
+        Game {
+            survivors: HashMap::new(),
+        }
+    }
+
+    fn add_survivor(&mut self, survivor: Survivor) -> bool {
+        if self.survivors.contains_key(&survivor.name) {
+            return false; // Name must be unique
+        }
+        self.survivors.insert(survivor.name.clone(), survivor);
+        true
+    }
+
+    fn is_game_over(&self) -> bool {
+        self.survivors.values().all(|s| s.wounds >= 2)
+    }
+
+    fn game_level(&self) -> Level {
+        self.survivors
+            .values()
+            .filter(|s| s.wounds < 2) // Only consider living survivors
+            .map(|s| s.level())
+            .max()
+            .unwrap_or(Level::Blue) // Default to Blue if no survivors
+    }
+}
+
+fn main() {
+    let mut game = Game::new();
+    let mut alice = Survivor::new("Alice");
+    let mut bob = Survivor::new("Bob");
+
+    alice.add_equipment("Baseball bat");
+    bob.add_equipment("Katana");
+    bob.add_equipment("Pistol");
+
+    game.add_survivor(alice);
+    game.add_survivor(bob);
+
+    let mut alice = game.survivors.get_mut("Alice").unwrap();
+    alice.receive_wound();
+    alice.add_experience();
+    alice.add_experience();
+    
+    println!("Game Level: {:?}", game.game_level());
+    println!("Game Over: {}", game.is_game_over());
+}
