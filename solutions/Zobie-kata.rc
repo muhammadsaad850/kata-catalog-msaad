@@ -22,6 +22,63 @@ impl Level {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Skill {
+    PlusOneAction,
+    PlusOneDieRanged,
+    PlusOneDieMelee,
+    FreeMoveAction,
+    Hoard,
+    Sniper,
+    Tough,
+}
+
+impl Skill {
+    fn description(&self) -> &'static str {
+        match self {
+            Skill::PlusOneAction => "+1 Action",
+            Skill::PlusOneDieRanged => "+1 Die (Ranged)",
+            Skill::PlusOneDieMelee => "+1 Die (Melee)",
+            Skill::FreeMoveAction => "+1 Free Move Action",
+            Skill::Hoard => "Hoard",
+            Skill::Sniper => "Sniper",
+            Skill::Tough => "Tough",
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SkillTree {
+    unlocked: Vec<Skill>,
+    potential_yellow: Vec<Skill>,
+    potential_orange: Vec<Skill>,
+    potential_red: Vec<Skill>,
+    cycle: u32,
+}
+
+impl SkillTree {
+    fn new() -> Self {
+        SkillTree {
+            unlocked: Vec::new(),
+            potential_yellow: vec![Skill::PlusOneAction],
+            potential_orange: vec![Skill::PlusOneDieRanged, Skill::PlusOneDieMelee],
+            potential_red: vec![Skill::FreeMoveAction, Skill::Hoard, Skill::Sniper],
+            cycle: 0,
+        }
+    }
+
+    fn unlock_for_level(&mut self, level: Level) -> Option<Skill> {
+        let skill = match level {
+            Level::Yellow => self.potential_yellow.pop(),
+            Level::Orange => self.potential_orange.pop(),
+            Level::Red => self.potential_red.pop(),
+            _ => None,
+        }?;
+        self.unlocked.push(skill.clone());
+        Some(skill)
+    }
+}
+
 #[derive(Debug)]
 struct Survivor {
     name: String,
@@ -29,6 +86,7 @@ struct Survivor {
     actions: u8,
     experience: u32,
     equipment: Vec<String>,
+    skill_tree: SkillTree,
 }
 
 impl Survivor {
@@ -39,6 +97,7 @@ impl Survivor {
             actions: 3,
             experience: 0,
             equipment: Vec::new(),
+            skill_tree: SkillTree::new(),
         }
     }
 
@@ -50,7 +109,7 @@ impl Survivor {
         if self.wounds >= 2 {
             self.equipment.clear();
         } else {
-            let max_capacity = 5 - self.wounds as usize;
+            let max_capacity = self.max_equipment_capacity();
             while self.equipment.len() > max_capacity {
                 self.equipment.pop();
             }
@@ -62,17 +121,40 @@ impl Survivor {
     }
 
     fn level(&self) -> Level {
-        Level::from_experience(self.experience)
+        Level::from_experience(self.effective_experience())
     }
 
     fn add_equipment(&mut self, item: &str) {
-        if self.equipment.len() < (5 - self.wounds as usize) {
+        if self.equipment.len() < self.max_equipment_capacity() {
             self.equipment.push(item.to_string());
         }
     }
 
+    fn max_equipment_capacity(&self) -> usize {
+        let base = 5;
+        let wounds_penalty = self.wounds as usize;
+        let hoard_bonus = if self.skill_tree.unlocked.contains(&Skill::Hoard) { 1 } else { 0 };
+        base + hoard_bonus - wounds_penalty
+    }
+
     fn is_dead(&self) -> bool {
         self.wounds >= 2
+    }
+
+    fn effective_experience(&self) -> u32 {
+        self.experience % 43
+    }
+
+    fn should_unlock_skill(&self, old_level: Level, new_level: Level) -> bool {
+        old_level != new_level && new_level != Level::Blue
+    }
+
+    fn apply_skill(&mut self, level: Level) -> Option<Skill> {
+        let skill = self.skill_tree.unlock_for_level(level)?;
+        if skill == Skill::PlusOneAction {
+            self.actions += 1;
+        }
+        Some(skill)
     }
 }
 
@@ -90,7 +172,7 @@ impl Game {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let mut game = Game {
             survivors: HashMap::new(),
             history: vec![],
@@ -150,6 +232,11 @@ impl Game {
             let old_level = s.level();
             s.add_experience();
             let new_level = s.level();
+            if s.should_unlock_skill(old_level, new_level) {
+                if let Some(skill) = s.apply_skill(new_level) {
+                    self.record_event(&format!("Survivor '{}' acquired new skill: {}.", name, skill.description()));
+                }
+            }
             if new_level != old_level {
                 self.record_event(&format!("Survivor '{}' leveled up to {:?}.", name, new_level));
             }
