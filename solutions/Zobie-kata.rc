@@ -1,6 +1,9 @@
 use std::collections::{HashSet, HashMap};
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::fs::OpenOptions;
+use std::io::Write;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
 enum Level {
     Blue,
     Yellow,
@@ -43,13 +46,13 @@ impl Survivor {
         if self.wounds < 2 {
             self.wounds += 1;
         }
-        
+
         if self.wounds >= 2 {
-            self.equipment.clear(); // Survivor dies, drop all equipment
+            self.equipment.clear();
         } else {
             let max_capacity = 5 - self.wounds as usize;
             while self.equipment.len() > max_capacity {
-                self.equipment.pop(); // Discard excess equipment
+                self.equipment.pop();
             }
         }
     }
@@ -67,59 +70,145 @@ impl Survivor {
             self.equipment.push(item.to_string());
         }
     }
+
+    fn is_dead(&self) -> bool {
+        self.wounds >= 2
+    }
 }
 
 #[derive(Debug)]
 struct Game {
     survivors: HashMap<String, Survivor>,
+    history: Vec<String>,
+    start_time: u64,
+    current_level: Level,
 }
 
 impl Game {
     fn new() -> Self {
-        Game {
+        let start_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        
+        let mut game = Game {
             survivors: HashMap::new(),
-        }
+            history: vec![],
+            start_time,
+            current_level: Level::Blue,
+        };
+        game.record_event(&format!("Game started at UNIX time: {}", start_time));
+        game
+    }
+
+    fn log_to_file(message: &str) {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("game_history.log")
+            .unwrap();
+        writeln!(file, "{}", message).unwrap();
+    }
+
+    fn record_event(&mut self, message: &str) {
+        self.history.push(message.to_string());
+        Game::log_to_file(message);
     }
 
     fn add_survivor(&mut self, survivor: Survivor) -> bool {
         if self.survivors.contains_key(&survivor.name) {
-            return false; // Name must be unique
+            return false;
         }
+        self.record_event(&format!("Survivor '{}' added to the game.", survivor.name));
         self.survivors.insert(survivor.name.clone(), survivor);
         true
     }
 
+    fn survivor_add_equipment(&mut self, name: &str, item: &str) {
+        if let Some(s) = self.survivors.get_mut(name) {
+            s.add_equipment(item);
+            self.record_event(&format!("Survivor '{}' acquired equipment: {}.", name, item));
+        }
+    }
+
+    fn survivor_receive_wound(&mut self, name: &str) {
+        if let Some(s) = self.survivors.get_mut(name) {
+            let was_alive = !s.is_dead();
+            s.receive_wound();
+            self.record_event(&format!("Survivor '{}' received a wound ({} total).", name, s.wounds));
+            if was_alive && s.is_dead() {
+                self.record_event(&format!("Survivor '{}' has died.", name));
+                if self.is_game_over() {
+                    self.record_event("Game has ended. All survivors have died.");
+                }
+            }
+        }
+    }
+
+    fn survivor_kill_zombie(&mut self, name: &str) {
+        if let Some(s) = self.survivors.get_mut(name) {
+            let old_level = s.level();
+            s.add_experience();
+            let new_level = s.level();
+            if new_level != old_level {
+                self.record_event(&format!("Survivor '{}' leveled up to {:?}.", name, new_level));
+            }
+            self.update_game_level();
+        }
+    }
+
+    fn update_game_level(&mut self) {
+        let new_level = self
+            .survivors
+            .values()
+            .filter(|s| !s.is_dead())
+            .map(|s| s.level())
+            .max()
+            .unwrap_or(Level::Blue);
+
+        if new_level != self.current_level {
+            self.current_level = new_level;
+            self.record_event(&format!("Game level has changed to {:?}.", new_level));
+        }
+    }
+
     fn is_game_over(&self) -> bool {
-        self.survivors.values().all(|s| s.wounds >= 2)
+        self.survivors.values().all(|s| s.is_dead())
     }
 
     fn game_level(&self) -> Level {
-        self.survivors
-            .values()
-            .filter(|s| s.wounds < 2) // Only consider living survivors
-            .map(|s| s.level())
-            .max()
-            .unwrap_or(Level::Blue) // Default to Blue if no survivors
+        self.current_level
+    }
+
+    fn print_history(&self) {
+        println!("Game History:");
+        for event in &self.history {
+            println!("- {}", event);
+        }
     }
 }
 
 fn main() {
     let mut game = Game::new();
-    let mut alice = Survivor::new("Alice");
-    let mut bob = Survivor::new("Bob");
-
-    alice.add_equipment("Baseball bat");
-    bob.add_equipment("Katana");
-    bob.add_equipment("Pistol");
+    let alice = Survivor::new("Alice");
+    let bob = Survivor::new("Bob");
 
     game.add_survivor(alice);
     game.add_survivor(bob);
 
-    let mut alice = game.survivors.get_mut("Alice").unwrap();
-    alice.receive_wound();
-    alice.add_experience();
-    alice.add_experience();
-    
+    game.survivor_add_equipment("Alice", "Baseball bat");
+    game.survivor_add_equipment("Bob", "Katana");
+
+    game.survivor_receive_wound("Alice");
+    game.survivor_kill_zombie("Alice");
+    game.survivor_kill_zombie("Alice");
+
+    game.survivor_receive_wound("Alice");
+    game.survivor_receive_wound("Bob");
+    game.survivor_receive_wound("Bob");
+
     println!("Game Level: {:?}", game.game_level());
     println!("Game Over: {}", game.is_game_over());
+
+    game.print_history();
 }
